@@ -1,0 +1,156 @@
+name: Track upstream and release macOS ARM64 browse binary
+
+on:
+  schedule:
+    # Check upstream four times a day; compile only if the release is missing.
+    - cron: '19 1,7,13,19 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Optional upstream release tag, e.g. v0.41.1 (blank = latest stable)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: browse-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.upstream.outputs.tag }}
+      should_build: ${{ steps.upstream.outputs.should_build }}
+    steps:
+      - name: Check the official latest release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-}"
+          if [[ -z "$tag" ]]; then
+            tag="$(gh api repos/vercel-labs/agent-browser/releases/latest --jq .tag_name)"
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid upstream version: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Patch release $tag already published, skipping build"
+            echo 'should_build=false' >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream release $tag needs a patched binary"
+            echo 'should_build=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: macos-15 # Standard hosted M1/ARM64 runner for public repos.
+    timeout-minutes: 65
+    env:
+      UPSTREAM_TAG: ${{ needs.check.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Apple Silicon runner
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          echo "Building on $(sw_vers -productVersion), $(uname -m)"
+
+      - name: Clone exactly the upstream release tag
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$UPSTREAM_TAG" --single-branch https://github.com/vercel-labs/agent-browser.git upstream
+          python3 - <<'PY'
+          import os, pathlib, re
+          manifest = (pathlib.Path('upstream') / 'cli/Cargo.toml').read_text()
+          v = re.search(r'^version\s*=\s*"([^"]+)"', manifest, re.M)
+          expected = os.environ['UPSTREAM_TAG'][1:]
+          if not v or v.group(1) != expected:
+              raise SystemExit(f"Upstream tag/manifest mismatch: {expected} != {v.group(1) if v else None}")
+          PY
+          git -C upstream rev-parse HEAD > upstream-commit.txt
+
+      - name: Apply strict patch, fail on upstream refactors
+        run: |
+          set -euo pipefail
+          python3 scripts/patch_upstream.py upstream
+          cd upstream/cli
+          cargo fmt --all
+          cargo fmt --all -- --check
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: upstream/cli -> target
+          key: agent-browser-browse-macos-arm64-v1
+
+      - name: Build only the ARM64 macOS binary
+        run: |
+          set -euo pipefail
+          cargo build --manifest-path upstream/cli/Cargo.toml --locked --profile ci --jobs 3
+          test "$(uname -m)" = arm64
+          test "$(upstream/cli/target/ci/agent-browser --version)" = "agent-browser ${UPSTREAM_TAG#v}"
+
+      - name: Smoke test default launch and JavaScript
+        run: |
+          set -euo pipefail
+          binary="$PWD/upstream/cli/target/ci/agent-browser"
+          echo '{}' > "$RUNNER_TEMP/browse-config.json"
+          export AGENT_BROWSER_CONFIG="$RUNNER_TEMP/browse-config.json"
+          export AGENT_BROWSER_NAMESPACE=browse-ci-smoke
+          mkdir -p "$RUNNER_TEMP/browse-smoke"
+          printf '%s\n' '<!doctype html><html><head><title>Browse smoke</title></head><body><h1>Browse smoke</h1><a href="/next">next</a></body></html>' > "$RUNNER_TEMP/browse-smoke/index.html"
+          python3 -m http.server 18765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/browse-smoke" > "$RUNNER_TEMP/browser-http.log" 2>&1 &
+          server_pid=$!
+          trap '"$binary" --session browse-ci close >/dev/null 2>&1 || true; kill "$server_pid" 2>/dev/null || true' EXIT
+          "$binary" --session browse-ci open http://127.0.0.1:18765/
+          "$binary" --session browse-ci snapshot -i
+          result="$("$binary" --session browse-ci eval 'JSON.stringify({title:document.title,webdriver:navigator.webdriver,ua:navigator.userAgent})')"
+          RESULT="$result" python3 - <<'PY'
+          import json,os
+          parsed=json.loads(os.environ['RESULT'])
+          if isinstance(parsed,str): parsed=json.loads(parsed)
+          assert parsed['title']=='Browse smoke', parsed
+          assert parsed['webdriver'] is False, parsed
+          assert 'HeadlessChrome' not in parsed['ua'], parsed
+          assert 'Chrome/' in parsed['ua'], parsed
+          print('Browse smoke passed:', parsed)
+          PY
+
+      - name: Sign, package and checksum
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          cp upstream/cli/target/ci/agent-browser dist/package/agent-browser-browse-native
+          chmod 755 dist/package/agent-browser-browse-native
+          codesign --force --sign - --timestamp=none dist/package/agent-browser-browse-native
+          lipo -archs dist/package/agent-browser-browse-native | grep -qx arm64
+          cp upstream/LICENSE dist/package/LICENSE.upstream
+          printf '%s\n' "${UPSTREAM_TAG#v}" > dist/package/UPSTREAM_VERSION
+          printf '%s\n' "$(cat upstream-commit.txt)" > dist/package/UPSTREAM_COMMIT
+          shasum -a 256 scripts/patch_upstream.py | awk '{print $1}' > dist/package/PATCH_SHA256
+          tar -czf dist/agent-browser-browse-darwin-arm64.tar.gz -C dist/package .
+          (cd dist && shasum -a 256 agent-browser-browse-darwin-arm64.tar.gz > SHA256SUMS)
+          ls -lh dist/*
+
+      - name: Publish patched release
+        env:
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release create "$UPSTREAM_TAG" \
+            dist/agent-browser-browse-darwin-arm64.tar.gz \
+            dist/SHA256SUMS \
+            --repo "$RELEASE_REPO" \
+            --target "$GITHUB_SHA" \
+            --title "Browse build ${UPSTREAM_TAG#v} (macOS ARM64)" \
+            --notes "Unofficial browsing-focused build of vercel-labs/agent-browser $UPSTREAM_TAG. Source commit: $(cat upstream-commit.txt). Runtime.enable is immediately disabled; stable Chrome, AutomationControlled and version-aware headless user-agent are built in. Console/page-error event streaming is intentionally impaired. See README for limitations."
