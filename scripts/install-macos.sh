@@ -31,18 +31,20 @@ if [ ! -f "$CONFIG" ]; then
 fi
 
 # Browsing sessions live in an isolated namespace; no cross-wiring with Homebrew.
-# Only create the wrapper once. No user flags or auth profiles are hardcoded.
-if [ ! -f "$WRAPPER" ]; then
-  wrapper_tmp="${WRAPPER}.tmp.$$"
+# Refresh the wrapper if the shared launcher policy changes. No auth profiles.
+wrapper_tmp="${WRAPPER}.tmp.$$"
   cat > "$wrapper_tmp" <<'EOF'
 #!/bin/bash
 set -euo pipefail
-export AGENT_BROWSER_NAMESPACE="${AGENT_BROWSER_NAMESPACE:-agent-browser-browse}"
+export AGENT_BROWSER_NAMESPACE="${AGENT_BROWSER_NAMESPACE:-abb}"
 export AGENT_BROWSER_CONFIG="${AGENT_BROWSER_CONFIG:-$HOME/.local/share/agent-browser-browse/empty-config.json}"
 exec "$HOME/.local/share/agent-browser-browse/current/agent-browser-browse-native" "$@"
 EOF
-  chmod 755 "$wrapper_tmp"
+chmod 755 "$wrapper_tmp"
+if [ ! -f "$WRAPPER" ] || ! /usr/bin/cmp -s "$wrapper_tmp" "$WRAPPER"; then
   /bin/mv -f "$wrapper_tmp" "$WRAPPER"
+else
+  /bin/rm -f "$wrapper_tmp"
 fi
 
 if [ -e "$CURRENT/agent-browser-browse-native" ] && [ -f "$CURRENT/UPSTREAM_VERSION" ]; then
