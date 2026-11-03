@@ -1,0 +1,60 @@
+name: Cross-platform patch verification
+
+on:
+  pull_request:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: darwin-arm64
+          - os: ubuntu-24.04
+            target: linux-x86_64
+          - os: windows-2025
+            target: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      UPSTREAM_TAG: v0.41.1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: upstream/cli -> target
+          key: browse-${{ matrix.target }}-ci
+      - name: Apply patch to exact upstream source
+        run: |
+          git clone --quiet --depth 1 --branch "$UPSTREAM_TAG" --single-branch https://github.com/vercel-labs/agent-browser.git upstream
+          python scripts/patch_upstream.py upstream
+          cargo fmt --manifest-path upstream/cli/Cargo.toml --all
+          cargo fmt --manifest-path upstream/cli/Cargo.toml --all -- --check
+          python scripts/verify_patch.py upstream
+      - name: Compile
+        run: cargo build --manifest-path upstream/cli/Cargo.toml --locked --profile ci --jobs 3
+      - name: Headless loopback smoke
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then suffix=.exe; else suffix=; fi
+          python scripts/smoke.py "upstream/cli/target/ci/agent-browser$suffix"
+      - name: Package architecture verification
+        run: python scripts/package.py "${{ matrix.target }}" "$UPSTREAM_TAG"

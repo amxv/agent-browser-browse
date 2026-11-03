@@ -36,7 +36,8 @@ def patch(source: Path) -> None:
         client = '        self.client\n' if path == browser else '    client\n'
         replace_once(path, anchor, anchor + '\n' + client + disable)
 
-    # Prefer the user's regular Chrome on macOS, rather than a cached Chrome for Testing.
+    # Prefer stable Google Chrome on every supported OS, rather than a cached
+    # Chrome for Testing. An explicit --executable-path always takes precedence.
     replace_once(chrome,
         '        None => find_chrome().ok_or_else(|| {',
         '        None => browse_default_chrome().or_else(find_chrome).ok_or_else(|| {')
@@ -49,8 +50,30 @@ fn browse_default_chrome() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 fn browse_default_chrome() -> Option<PathBuf> {
+    // Do not use Chrome for Testing if a stable installation is available.
+    for directory in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
+        for name in ["google-chrome-stable", "google-chrome"] {
+            let path = directory.join(name);
+            if path.is_file() { return Some(path); }
+        }
+    }
+    for name in ["/opt/google/chrome/chrome", "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome"] {
+        let path = PathBuf::from(name);
+        if path.is_file() { return Some(path); }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn browse_default_chrome() -> Option<PathBuf> {
+    for variable in ["LOCALAPPDATA", "PROGRAMFILES", "ProgramFiles(x86)"] {
+        if let Some(directory) = std::env::var_os(variable) {
+            let path = PathBuf::from(directory).join(r"Google\\Chrome\\Application\\chrome.exe");
+            if path.is_file() { return Some(path); }
+        }
+    }
     None
 }
 
@@ -69,9 +92,39 @@ fn browse_headless_user_agent(chrome_path: &Path) -> Option<String> {
     Some(format!("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"))
 }
 
-#[cfg(not(target_os = "macos"))]
-fn browse_headless_user_agent(_chrome_path: &Path) -> Option<String> {
-    None
+#[cfg(target_os = "linux")]
+fn browse_headless_user_agent(chrome_path: &Path) -> Option<String> {
+    // Do not spoof a Google Chrome UA for other Chromium forks or cached CfT.
+    let name = chrome_path.file_name()?.to_str()?;
+    if !matches!(name, "google-chrome" | "google-chrome-stable" | "chrome") { return None; }
+    let output = std::process::Command::new(chrome_path).arg("--version").output().ok()?;
+    if !output.status.success() { return None; }
+    let major = browse_major_version(&String::from_utf8_lossy(&output.stdout))?;
+    Some(format!("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"))
+}
+
+#[cfg(target_os = "windows")]
+fn browse_headless_user_agent(chrome_path: &Path) -> Option<String> {
+    let normalized = chrome_path.to_string_lossy().replace('\\\\', "/").to_ascii_lowercase();
+    if !chrome_path.file_name()?.to_str()?.eq_ignore_ascii_case("chrome.exe")
+        || !normalized.contains("/google/chrome/application/") {
+        return None;
+    }
+    // Chrome.exe is a GUI-subsystem program; --version need not print stdout.
+    // Read its signed Windows version resource instead of pinning a UA.
+    let quoted = chrome_path.to_string_lossy().replace(char::from(39), "''");
+    let script = format!("(Get-Item -LiteralPath '{quoted}').VersionInfo.ProductVersion");
+    let output = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().ok()?;
+    if !output.status.success() { return None; }
+    let major = browse_major_version(&String::from_utf8_lossy(&output.stdout))?;
+    Some(format!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"))
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn browse_major_version(version: &str) -> Option<u32> {
+    version.split_whitespace().filter_map(|part| part.split('.').next()?.parse::<u32>().ok())
+        .find(|major| *major >= 100)
 }
 
 '''
@@ -105,7 +158,7 @@ fn browse_headless_user_agent(_chrome_path: &Path) -> Option<String> {
         'pub const DEFAULT_IDLE_TIMEOUT_MS: u64 = 60 * 60 * 1000;',
         'pub const DEFAULT_IDLE_TIMEOUT_MS: u64 = 15 * 60 * 1000;')
 
-    print("Applied Runtime.disable in 4 locations and all macOS browse defaults")
+    print("Applied Runtime.disable in 4 locations and cross-platform browse defaults")
 
 
 if __name__ == '__main__':
