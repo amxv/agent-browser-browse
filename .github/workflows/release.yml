@@ -83,6 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/patch_upstream.py upstream
+          PATCHED_UPSTREAM_ROOT="$PWD/upstream" python3 -m unittest discover -s scripts -p 'test_*.py' -v
           cd upstream/cli
           cargo fmt --all
           cargo fmt --all -- --check
@@ -100,18 +101,29 @@ jobs:
           test "$(uname -m)" = arm64
           test "$(upstream/cli/target/ci/agent-browser --version)" = "agent-browser ${UPSTREAM_TAG#v}"
 
+      - name: Test upstream timeout, profile isolation and Chrome arguments
+        run: |
+          set -euo pipefail
+          manifest=upstream/cli/Cargo.toml
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_resolve_idle_timeout_
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_default_idle_timeout_does_not_close_webdriver_sessions
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_build_args_profile_no_temp_dir
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_build_args_temp_user_data_dir_created
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_build_args_merges_user_enable_features
+          cargo test --manifest-path "$manifest" --locked --jobs 3 test_build_args_custom_window_size_not_overridden
+
       - name: Smoke test default launch and JavaScript
         run: |
           set -euo pipefail
           binary="$PWD/upstream/cli/target/ci/agent-browser"
           echo '{}' > "$RUNNER_TEMP/browse-config.json"
           export AGENT_BROWSER_CONFIG="$RUNNER_TEMP/browse-config.json"
-          export AGENT_BROWSER_NAMESPACE=browse-ci-smoke
+          export AGENT_BROWSER_NAMESPACE=abb-ci
           mkdir -p "$RUNNER_TEMP/browse-smoke"
           printf '%s\n' '<!doctype html><html><head><title>Browse smoke</title></head><body><h1>Browse smoke</h1><a href="/next">next</a></body></html>' > "$RUNNER_TEMP/browse-smoke/index.html"
           python3 -m http.server 18765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/browse-smoke" > "$RUNNER_TEMP/browser-http.log" 2>&1 &
           server_pid=$!
-          trap '"$binary" --session browse-ci close >/dev/null 2>&1 || true; kill "$server_pid" 2>/dev/null || true' EXIT
+          trap 'for name in browse-ci browse-ci-profile browse-ci-args; do "$binary" --session "$name" close >/dev/null 2>&1 || true; done; kill "$server_pid" 2>/dev/null || true' EXIT
           "$binary" --session browse-ci open http://127.0.0.1:18765/
           "$binary" --session browse-ci snapshot -i
           result="$("$binary" --session browse-ci eval 'JSON.stringify({title:document.title,webdriver:navigator.webdriver,ua:navigator.userAgent})')"
@@ -124,6 +136,34 @@ jobs:
           assert 'HeadlessChrome' not in parsed['ua'], parsed
           assert 'Chrome/' in parsed['ua'], parsed
           print('Browse smoke passed:', parsed)
+          PY
+
+          # Explicit profile paths must remain usable without selecting an
+          # existing account; use only an empty, runner-owned profile.
+          profile="$RUNNER_TEMP/browse-scratch-profile"
+          mkdir -p "$profile"
+          "$binary" --session browse-ci-profile --profile "$profile" --idle-timeout 30s open http://127.0.0.1:18765/
+          test -f "$profile/Local State"
+          profile_result="$("$binary" --session browse-ci-profile eval 'JSON.stringify({title:document.title,webdriver:navigator.webdriver})')"
+          PROFILE_RESULT="$profile_result" python3 - <<'PY'
+          import json,os
+          result=json.loads(os.environ['PROFILE_RESULT'])
+          if isinstance(result,str): result=json.loads(result)
+          assert result == {'title':'Browse smoke','webdriver':False}, result
+          print('Explicit scratch profile smoke passed:', result)
+          PY
+
+          # Custom Chrome arguments must not lose the baked-in Blink default;
+          # an explicit user-agent startup argument must take precedence.
+          "$binary" --session browse-ci-args --args '--user-agent=BrowseOverride/1.0' open http://127.0.0.1:18765/
+          args_result="$("$binary" --session browse-ci-args eval 'JSON.stringify({webdriver:navigator.webdriver,ua:navigator.userAgent})')"
+          ARGS_RESULT="$args_result" python3 - <<'PY'
+          import json,os
+          result=json.loads(os.environ['ARGS_RESULT'])
+          if isinstance(result,str): result=json.loads(result)
+          assert result['webdriver'] is False, result
+          assert result['ua']=='BrowseOverride/1.0', result
+          print('Chrome argument override smoke passed:', result)
           PY
 
       - name: Sign, package and checksum

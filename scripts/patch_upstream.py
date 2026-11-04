@@ -16,6 +16,20 @@ def replace_once(path: Path, before: str, after: str) -> None:
     path.write_text(original.replace(before, after, 1))
 
 
+def replace_once_across(paths: list[Path], before: str, after: str) -> None:
+    """Allow a reviewed upstream move, but require exactly one matching definition."""
+    matches = []
+    for path in paths:
+        if path.is_file():
+            matches.extend([path] * path.read_text().count(before))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Patch mismatch across {', '.join(map(str, paths))}: "
+            f"expected 1 anchor, found {len(matches)}: {before[:100]!r}"
+        )
+    replace_once(matches[0], before, after)
+
+
 def patch(source: Path) -> None:
     crate = source / "cli" / "Cargo.toml"
     if not crate.exists():
@@ -25,6 +39,7 @@ def patch(source: Path) -> None:
     state = source / "cli/src/native/state.rs"
     chrome = source / "cli/src/native/cdp/chrome.rs"
     daemon = source / "cli/src/native/daemon.rs"
+    running = source / "cli/src/session_settings/running.rs"
 
     for path, anchor in [
         (browser, '            .send_command_no_params("Runtime.enable", Some(session_id))\n            .await?;'),
@@ -100,8 +115,9 @@ fn browse_headless_user_agent(_chrome_path: &Path) -> Option<String> {
         '        match try_launch_chrome(&chrome_path, effective_options) {',
         '        match try_launch_chrome(&chrome_path, &browse_options) {')
 
-    # Shorter cleanup fallback for unattended browsing agents.
-    replace_once(daemon,
+    # Upstream v0.41.2 moved the constant from daemon.rs to session_settings.
+    # Preserve its newer idle-shutdown exemptions and override semantics.
+    replace_once_across([daemon, running],
         'pub const DEFAULT_IDLE_TIMEOUT_MS: u64 = 60 * 60 * 1000;',
         'pub const DEFAULT_IDLE_TIMEOUT_MS: u64 = 15 * 60 * 1000;')
 
