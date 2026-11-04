@@ -37,7 +37,7 @@ The patch removed the **measured CDP `Runtime.enable` detection** on Rebrowser a
 
 The [release workflow](.github/workflows/release.yml) checks the official upstream **stable GitHub release** every six hours, but uses a macOS ARM64 runner **only when this repository lacks that version's release**. It clones the exact upstream version tag, applies [strict version-sensitive patches](scripts/patch_upstream.py), builds and smoke-tests an ARM64 binary, then publishes a version-matched GitHub Release with `SHA256SUMS`.
 
-If upstream changes the relevant code and a patch anchor no longer matches, the workflow **fails instead of publishing a partially patched binary**. The previous release stays available. Check the GitHub Actions log to adapt the patch and rerun the workflow. A release may lag the official Homebrew version if a build fails or is still running.
+If upstream changes the relevant code and a patch anchor no longer matches, the workflow **fails instead of publishing a partially patched binary**. The previous release stays available. The timeout patch supports both the legacy `native/daemon.rs` definition and the `session_settings/running.rs` location introduced in v0.41.2, requiring exactly one match. The workflow also checks timeout, explicit profile handling and Chrome arguments before release. Check the GitHub Actions log to adapt future refactors and rerun the workflow. A release may lag the official Homebrew version if a build fails or is still running.
 
 The daily macOS LaunchAgent `xyz.ashray.agent-browser-updater` installs the newest matching patched release through [scripts/install-macos.sh](scripts/install-macos.sh) after its existing Homebrew update. It retries hourly when a patch release is not available yet, without compiling Rust locally. The updater verifies SHA-256, architecture, and version before atomically switching the browsing command.
 
@@ -60,7 +60,7 @@ Do **not** point the browsing variant at a shared `agent-browser` daemon, and do
 The workflow owns normal compilation; to reproduce locally for troubleshooting:
 
 ```bash
-git clone --depth 1 --branch v0.41.1 https://github.com/vercel-labs/agent-browser.git upstream
+git clone --depth 1 --branch v0.41.2 https://github.com/vercel-labs/agent-browser.git upstream
 python3 scripts/patch_upstream.py upstream
 cd upstream/cli
 cargo fmt --all
