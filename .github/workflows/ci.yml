@@ -1,0 +1,27 @@
+name: Verify macOS and Linux browse builds
+
+on:
+  pull_request:
+    paths: ['scripts/**', '.github/workflows/**', 'UPSTREAM_VERSION']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          version="$(cat UPSTREAM_VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+  build:
+    needs: version
+    uses: ./.github/workflows/build.yml
+    with:
+      upstream_tag: ${{ needs.version.outputs.tag }}
