@@ -1,6 +1,6 @@
 # v0.43.0 verification report
 
-**Measured on November 13, 2026 (UTC).** Local source builds, applicable automated tests, packaging checks and public-detector observations are recorded below. Hosted release and installed-artifact results are tracked separately at the end of this report.
+**Measured on November 13, 2026 (UTC).** Local source builds, applicable automated tests, packaging checks and public-detector observations are recorded below. The published release, hosted CI, installation on both machines, and PR closure are recorded at the end of this report.
 
 The browsing build completed the selected public observations on macOS ARM64 and Linux x86_64. It did **not** pass every detector: both platforms exposed main-world execution when Rebrowser's documented probe was deliberately invoked; ordinary Linux headless Chrome retained a SwiftShader-related failure; and incolumitas retained a legacy WebDriver failure. These limitations belong alongside the successful observations.
 
@@ -8,7 +8,7 @@ The browsing build completed the selected public observations on macOS ARM64 and
 
 GitHub reported the official release publication time as **2026-11-12 23:09:31 UTC**. This verifies the requested stable release rather than inferring a version from a moving default branch.
 
-The build is based on the official [agent-browser v0.43.0 release](https://github.com/vercel-labs/agent-browser/releases/tag/v0.43.0), with upstream source commit [`1cc19526f3641c8543d55aa6700e7c55b37ac356`](https://github.com/vercel-labs/agent-browser/commit/1cc19526f3641c8543d55aa6700e7c55b37ac356). The Linux work adapts the cross-platform direction in [PR #1, “Port browse build to Linux and Windows”](https://github.com/amxv/agent-browser-browse/pull/1) to this newer upstream version. The relevant Linux work was incorporated while preserving main's newer timeout-location handling. The original branch, including its Windows work, remains preserved. PR closure is recorded after release verification. Windows and Linux ARM64 are outside the measured scope.
+The build is based on the official [agent-browser v0.43.0 release](https://github.com/vercel-labs/agent-browser/releases/tag/v0.43.0), with upstream source commit [`1cc19526f3641c8543d55aa6700e7c55b37ac356`](https://github.com/vercel-labs/agent-browser/commit/1cc19526f3641c8543d55aa6700e7c55b37ac356). The Linux work adapts the cross-platform direction in [PR #1, “Port browse build to Linux and Windows”](https://github.com/amxv/agent-browser-browse/pull/1) to this newer upstream version. The relevant Linux work was incorporated while preserving main's newer timeout-location handling. The original branch, including its Windows work, remains preserved. PR #1 was closed after release and installation verification on November 13, 2026, with its original branch retained. Windows and Linux ARM64 are outside the measured scope.
 
 | Matrix | Operating system and architecture | Actual Chrome versions | CLI version |
 | --- | --- | --- | --- |
@@ -207,6 +207,33 @@ For Linux, a direct headless Chrome **152.0.7977.64** control matched the final 
 
 An offline reconstruction found that adding the `pre_shared_key` extension to the retained browser-side extension set reproduced the native comparison's JA4 suffix. This suggests TLS resumption state as a possible explanation, but it is an **inference**: the native response's raw extension list was not retained in that comparison. A single follow-up retained both raw extension lists and aligned the direct launch more closely with the normal CLI launch. It matched the user-agent, TLS 1.3, JA4 (`t13d1517h2_8daaf6152771_cb7bf5808d99`), HTTP/2 fingerprint, all 15 non-GREASE cipher suites in order, and all 17 non-GREASE extensions. Neither follow-up extension list contained `pre_shared_key`. GREASE values and extension order differed, so raw JA3 still differed. This measured follow-up supports stable-field agreement for that pair; it does not establish the unretained original extension list or retroactively turn the first comparison into a pass.
 
+### Reproduce the direct Linux TLS follow-up
+
+This was the direct Linux control's complete launch argument set, using a fresh owned profile and the same measured Chrome major version. `timeout` is GNU coreutils on Linux. Capture the full response, verify the actual browser version, and compare it with a nearby harness TLS capture on the same machine/network; do not compare only the UA or raw JA3 string.
+
+```bash
+TLS_CONTROL_PROFILE="$(mktemp -d)"
+trap 'rm -rf "$TLS_CONTROL_PROFILE"' EXIT
+/usr/bin/google-chrome-stable --version
+timeout --kill-after=3s 55s /usr/bin/google-chrome-stable \
+  --headless=new --no-first-run --no-default-browser-check \
+  --disable-background-networking --disable-backgrounding-occluded-windows \
+  --disable-component-update --disable-default-apps --disable-hang-monitor \
+  --disable-prompt-on-repost --disable-sync --disable-features=Translate \
+  --enable-features=NetworkService,NetworkServiceInProcess \
+  --metrics-recording-only --password-store=basic --use-mock-keychain \
+  --hide-scrollbars --enable-unsafe-swiftshader --window-size=1280,720 \
+  '--screen-info={1920x1080 devicePixelRatio=1}' \
+  --user-data-dir="$TLS_CONTROL_PROFILE" \
+  --disable-blink-features=AutomationControlled \
+  '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36' \
+  --dump-dom https://tls.peet.ws/api/all > tls-direct-dom.html
+```
+
+The original minimal Linux control omitted the flags from `--disable-background-networking` through `--screen-info`. The follow-up aligned more launch defaults; it still intentionally had no CDP port or attached controller. It did not include the normal CLI's optional experimental WebMCP feature switches. No individual added flag can be assigned causal credit for the changed TLS result.
+
+The macOS direct control used `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, a fresh profile, `--headless=new`, `--no-first-run`, `--no-default-browser-check`, `--disable-blink-features=AutomationControlled`, `--dump-dom https://tls.peet.ws/api/all`, and the recorded UA `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36`. Both actual control helpers enforced a bounded subprocess timeout and cleanup of their owned process group/profile. Neither attached CDP, selected a saved profile, or added a sandbox override.
+
 ## Reproduction and evidence index
 
 Run the full matrix with the intended native build or installed wrapper:
@@ -285,6 +312,28 @@ Installer regressions cover multi-platform manifests, checksum rejection, archiv
 
 ## Publication and installation record
 
-Local verification is complete. The authorized normal main push, hosted macOS ARM64/Ubuntu 24.04 x86_64 release builds, installation of those published artifacts on both machines, and PR #1 closure are the remaining publication steps. No published-release or installed-version success is claimed by this prepublication record; this section will be updated with their observed results.
+The implementation was pushed normally to `main` as [`8b82c41aa2456ce8931d6f8df6ed8f76990ea8a5`](https://github.com/amxv/agent-browser-browse/commit/8b82c41aa2456ce8931d6f8df6ed8f76990ea8a5). [Release run 43357357247](https://github.com/amxv/agent-browser-browse/actions/runs/43357357247) completed successfully at that exact commit. Its four jobs—release check, Linux build, Mac build and publication—all passed. The [v0.43.0 release](https://github.com/amxv/agent-browser-browse/releases/tag/v0.43.0) was published at **2026-11-13 03:38:00 UTC**; the publication job completed two seconds later. The release is neither draft nor prerelease, and its Git tag resolves to the implementation commit above.
+
+The hosted jobs repeated all 23 Python regressions per platform, built the real dashboard/native executable, passed the same complete applicable Rust totals recorded above (including the disclosed ignored counts), passed browser smoke tests, and verified/package-uploaded their artifacts. The Mac job used macOS 15 ARM64 and ad-hoc signing; the Linux job used Ubuntu 24.04 x86_64. The local Ubuntu 26.04 archive was not published.
+
+| Published asset | Bytes | SHA-256, matched against published manifest and GitHub digest |
+| --- | ---: | --- |
+| `agent-browser-browse-darwin-arm64.tar.gz` | 10,358,326 | `598524bf76ceeb2264015dac7d3bd57206fb93dad5a8f50b9de35378f5d85eca` |
+| `agent-browser-browse-linux-x86_64.tar.gz` | 11,182,680 | `4b4295176517a10b9682ef06ab1f4d4e740ac145d4bbf1af9e5255bf308d5281` |
+
+Both published packages were then installed through the committed installers on the measured machines. Each installed wrapper reports **`agent-browser 0.43.0`**, and each records the exact expected upstream commit and patch-script hash. The installed-wrapper loopback smoke suite exited 0 on both hosts, including defaults, navigation/input/snapshot/tab/state, empty profile, Blink-feature merging, user-agent overrides, popup policy and screen override. Linux linking was checked with `ldd`, with no missing libraries; Mac ARM64 architecture and the ad-hoc signature were rechecked after installation.
+
+| Installed executable | SHA-256 |
+| --- | --- |
+| macOS ARM64 | `fcbdd83c614bf7e6b78b24d857c4c534352b32aecabf0c7d9046ae7646f38939` |
+| Linux x86_64 | `1465dcc849415607e5bdcb40e08f26469ec5776881d0b19787a7b97898b74c8d` |
+
+The Mac's existing wrapper and regular empty config were preserved byte-for-byte, and its previous 0.42.0 installation remains available. Its daily updater helper was backed up and atomically refreshed with the reviewed multi-platform installer; the surrounding updater and LaunchAgent were not changed. Linux's new clean canonical checkout and installation did not alter the prior cross-platform checkout or the five existing dirty files in the older upstream tree. No task-owned browser sessions remained after the installed smoke tests.
+
+Detector measurements refer to the local executable hashes earlier in this report. The published same-source artifacts received hosted tests and installed-wrapper smoke verification; no additional third-party detector matrix was run after publication.
+
+[PR #1](https://github.com/amxv/agent-browser-browse/pull/1) was **closed at 2026-11-13 03:42:20 UTC**, after its head was rechecked against the reviewed `b02af3e5800a651cb709d1c72758ddbb1fed7c8f`. Relevant Linux work was incorporated into the main implementation; the PR was closed without a merge commit or branch deletion. The original `feat/cross-platform-browse-2026` branch remains at that same commit, preserving the deferred Windows work. There was no force push.
+
+Private installation evidence is indexed under `dist/evidence/macos-published-install-verification.json`, `dist/evidence/macos-published-smoke.json`, and the Linux task checkout's `dist/evidence/linux-installed-v043/`. Subsequent changes to this report and README record observed results without changing the released executable source.
 
 Remaining detector findings are disclosed results: main-world eval visibility, the ordinary Linux software-renderer signal, the legacy incolumitas failure, incomplete behavioral scoring, and the limits of the TLS comparisons. No result supports a claim that browser automation is undetectable.
