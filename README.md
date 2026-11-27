@@ -97,6 +97,6 @@ python3 scripts/package.py darwin-arm64 v0.43.0
 # python3 scripts/package.py linux-x86_64 v0.43.0
 ```
 
-Build the dashboard before compiling Rust so its actual UI is embedded. The unit runner uses a temporary empty config, clears inherited browser environment overrides, runs tests serially, and disables debug symbols to limit memory use. It does not change the user's home directory or saved config. The smoke test exercises default navigation/input/snapshot/tab/state behavior, an explicit empty profile, custom Blink arguments, and both user-agent override paths. It uses only an owned loopback fixture and closes its own sessions.
+Build the dashboard before compiling Rust so its actual UI is embedded. The unit runner uses a temporary empty config, clears inherited browser environment overrides, and runs tests serially using upstream's optimized CI profile. It does not change the user's home directory or saved config. The smoke test exercises default navigation/input/snapshot/tab/state behavior, an explicit empty profile, custom Blink arguments, and both user-agent override paths. It uses only an owned loopback fixture and closes its own sessions.
 
 Upstream is Apache-2.0 licensed. This project is not affiliated with or endorsed by Vercel.

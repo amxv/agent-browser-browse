@@ -49,6 +49,11 @@ def patch(source: Path) -> None:
     ]:
         disable = anchor.replace('"Runtime.enable"', '"Runtime.disable"')
         client = '        self.client\n' if path == browser else '    client\n'
+        if path == browser:
+            # Domain initialization enables Page first. Frame context lookup
+            # also enables Runtime in v0.45.0 and must retain upstream behavior.
+            page_enable = anchor.replace('"Runtime.enable"', '"Page.enable"')
+            anchor = page_enable + '\n' + client + anchor
         replace_once(path, anchor, anchor + '\n' + client + disable)
 
     # Prefer stable Chrome on the supported hosts over cached Chrome for Testing.

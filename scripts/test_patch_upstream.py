@@ -67,8 +67,15 @@ class PatchedSourceTests(unittest.TestCase):
             ("state.rs", "Some(temp_session)"),
         ]:
             content = (root / "native" / name).read_text()
-            self.assertIn(f'.send_command_no_params("Runtime.enable", {session})', content)
-            self.assertIn(f'.send_command_no_params("Runtime.disable", {session})', content)
+            client = "self.client" if name == "browser.rs" else "client"
+            def call(method):
+                return f'{client} .send_command_no_params("{method}", {session}) .await?;'
+
+            calls = [call("Runtime.enable"), call("Runtime.disable")]
+            normalized = " ".join(content.split())
+            self.assertEqual(normalized.count(" ".join(calls)), 1, (name, session))
+            if name == "browser.rs":
+                self.assertIn(" ".join([call("Page.enable"), *calls]), normalized)
 
         chrome = (root / "native/cdp/chrome.rs").read_text()
         self.assertRegex(chrome, r"browse_default_chrome\(\)\s*\.or_else\(find_chrome\)")
