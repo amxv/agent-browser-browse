@@ -53,4 +53,4 @@ python3 scripts/check_detectors.py --binary <v0.45.0 native> --targets all \
   --exercise-rebrowser --verify-turnstile --label candidate-v045
 ```
 
-The raw evidence is kept privately under the ignored `dist/evidence/baseline-v043-chrome158-20261127T121428Z-fbb42f/` and `dist/evidence/candidate-v045-chrome158-20261127T121930Z-462cbf/`.
+Then compare the two evidence directories with `python3 scripts/compare_detectors.py`, as described in the [detector release bar](detector-release-bar.md). The raw evidence is kept privately under the ignored `dist/evidence/baseline-v043-chrome158-20261127T121428Z-fbb42f/` and `dist/evidence/candidate-v045-chrome158-20261127T121930Z-462cbf/`.

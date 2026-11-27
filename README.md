@@ -58,6 +58,8 @@ The [v0.43.0 verification report](docs/verification-0.43.0.md) records the Novem
 
 The [v0.45.0 parity check](docs/verification-0.45.0.md) ran the same matrix on November 27, 2026 on macOS against the published v0.43.0 build, on the same Chrome 158 build. Every recorded detector result matched, including the known limitations. Linux was not re-measured for v0.45.0.
 
+Future releases should meet the [detector release bar](docs/detector-release-bar.md): the same matrix, run back to back against the previous release and compared with `scripts/compare_detectors.py`.
+
 The previous [v0.41.1 Mac-only measurements](https://github.com/amxv/agent-browser-browse/blob/4506dfe/README.md#detection-test-results) are historical. They do not establish Linux behavior or a guarantee for later releases. Network reputation, browser version, session history, behavior, and detector changes can affect the result.
 
 Reproduce the public observations with fresh isolated sessions:
