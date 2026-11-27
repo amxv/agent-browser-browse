@@ -16,15 +16,14 @@ def main():
         parser.error(f"missing Cargo manifest: {manifest}")
     env = {key: value for key, value in os.environ.items()
            if not key.startswith("AGENT_BROWSER_")}
-    env.update(CARGO_PROFILE_TEST_DEBUG="0", CARGO_PROFILE_DEV_DEBUG="0",
-               CARGO_INCREMENTAL="0")
+    env["CARGO_INCREMENTAL"] = "0"
     with tempfile.TemporaryDirectory(prefix="abb-unit-") as directory:
         config = Path(directory) / "config.json"
         config.write_text("{}\n")
         env["AGENT_BROWSER_CONFIG"] = str(config)
         # Some upstream tests temporarily mutate process-wide environment values.
         # Serial execution also protects tests that do not acquire EnvGuard.
-        command = ["cargo", "test", "--manifest-path", str(manifest), "--locked",
+        command = ["cargo", "test", "--profile", "ci", "--manifest-path", str(manifest), "--locked",
                    "--jobs", "1", "--", "--test-threads=1"]
         return subprocess.run(command, env=env).returncode
 
