@@ -33,7 +33,8 @@ def main():
         (root / "index.html").write_text(
             "<!doctype html><title>Browse smoke</title><h1>Browse smoke</h1>"
             "<a href='/next.html'>Next</a><input aria-label='Test input'>"
-            "<script>window.popupWasBlocked = window.open('about:blank') === null;</script>"
+            "<script>window.browseSmokeGlobal = 'page';"
+            "document.documentElement.dataset.popupBlocked = window.open('about:blank') === null;</script>"
         )
         (root / "next.html").write_text("<!doctype html><title>Next page</title><h1>Next page</h1>")
 
@@ -61,7 +62,10 @@ def main():
             return result.stdout.strip()
 
         def fingerprint(session):
-            return decode(command(session, "eval", "JSON.stringify({title:document.title,webdriver:navigator.webdriver,ua:navigator.userAgent,plugins:navigator.plugins.length,chrome:typeof window.chrome,screen:[screen.width,screen.height],popupBlocked:window.popupWasBlocked})"))
+            return decode(command(session, "eval", "JSON.stringify({title:document.title,webdriver:navigator.webdriver,ua:navigator.userAgent,plugins:navigator.plugins.length,chrome:typeof window.chrome,screen:[screen.width,screen.height],popupBlocked:document.documentElement.dataset.popupBlocked==='true',brands:navigator.userAgentData.brands.map(b=>b.brand+'/'+b.version)})"))
+
+        def client_hints(session):
+            return decode(command(session, "eval", "navigator.userAgentData.getHighEntropyValues(['fullVersionList','platformVersion','architecture','bitness']).then(v=>JSON.stringify(v))"))
 
         url = f"http://127.0.0.1:{server.server_port}/"
         try:
@@ -75,6 +79,16 @@ def main():
             assert default["plugins"] > 0 and default["chrome"] == "object", default
             assert default["screen"] == [1920, 1080] and default["popupBlocked"] is True, default
             results["default"] = default
+            # eval runs in an isolated world: DOM shared, page globals hidden.
+            assert decode(command("d", "eval", "typeof window.browseSmokeGlobal")) == "undefined"
+            assert decode(command("d", "eval", "--main-world", "window.browseSmokeGlobal")) == "page"
+            results["isolated_eval"] = "passed"
+            hints = client_hints("d")
+            major = default["ua"].split("Chrome/")[1].split(".")[0]
+            full = {item["brand"]: item["version"] for item in hints["fullVersionList"]}
+            assert full.get("Google Chrome", "").startswith(major + ".") and full["Google Chrome"].count(".") == 3, hints
+            assert hints["architecture"] and hints["bitness"] == "64", hints
+            results["client_hints"] = hints
             command("d", "fill", "input", "browse-smoke")
             assert decode(command("d", "eval", "document.querySelector('input').value")) == "browse-smoke"
             command("d", "click", "a")
@@ -99,6 +113,8 @@ def main():
             command("a", "--args", "--user-agent=BrowseOverride/1.0", "open", url)
             custom = fingerprint("a")
             assert custom["ua"] == "BrowseOverride/1.0" and custom["webdriver"] is False, custom
+            # A bare --user-agent switch keeps Chrome's own brand list; the browse override must match it.
+            assert custom["brands"] == default["brands"], (custom["brands"], default["brands"])
             results["startup_user_agent_override"] = custom
             command("a", "close")
             sessions.remove("a")

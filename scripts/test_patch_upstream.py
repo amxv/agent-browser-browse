@@ -86,6 +86,17 @@ class PatchedSourceTests(unittest.TestCase):
             "try_launch_chrome(&chrome_path, &browse_options)",
         ]:
             self.assertIn(preserved, chrome)
+        self.assertIn("browse_set_launch_user_agent(browse_launch_ua);", chrome)
+
+        browser = " ".join((root / "native/browser.rs").read_text().split())
+        self.assertEqual(browser.count("super::cdp::chrome::browse_user_agent_override(&self.client)"), 2)
+
+        commands = (root / "commands.rs").read_text()
+        self.assertIn('rest.first() == Some(&"--main-world")', commands)
+        self.assertIn('browse_cmd["mainWorld"] = json!(true);', commands)
+        actions = " ".join((root / "native/actions.rs").read_text().split())
+        self.assertIn("browse_isolated_evaluate(mgr, script)", actions)
+        self.assertIn("let result = if !browse_main_world {", actions)
 
 
 if __name__ == "__main__":

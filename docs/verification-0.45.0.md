@@ -54,3 +54,27 @@ python3 scripts/check_detectors.py --binary <v0.45.0 native> --targets all \
 ```
 
 Then compare the two evidence directories with `python3 scripts/compare_detectors.py`, as described in the [detector release bar](detector-release-bar.md). The raw evidence is kept privately under the ignored `dist/evidence/baseline-v043-chrome158-20261127T121428Z-fbb42f/` and `dist/evidence/candidate-v045-chrome158-20261127T121930Z-462cbf/`.
+
+## Improvements after the v0.45.0 release
+
+**Measured on November 27, 2026 (UTC), macOS only, Chrome 158.0.8127.37.** Two patch changes, built on upstream v0.45.0 and not yet in a published release, address the remaining Rebrowser findings:
+
+- **Isolated `eval`.** The default `eval` runs in a fresh isolated world (`Page.createIsolatedWorld`) on the main frame or the selected frame. It shares the DOM but not page globals, so page scripts cannot observe it. `eval --main-world <js>` keeps the previous page-world behavior.
+- **Full client hints.** Chrome blanks the high-entropy client hints whenever `--user-agent` is set, which the headless browse build has to do. The patch restores them per target with `Emulation.setUserAgentOverride`: the exact running version from `Browser.getVersion`, the OS version, architecture, and Chromium's GREASE brand list. Dedicated workers inherit the values. The override applies only when the connected browser reports exactly the user agent the daemon injected.
+
+| Check | v0.45.0 release | Improved build |
+| --- | --- | --- |
+| Rebrowser before deliberate calls | 15 green, 1 yellow (`useragent`), 0 red, 4 gray | **16 green, 0 yellow, 0 red, 4 gray** |
+| Rebrowser after deliberate calls | 17 green, 1 yellow, 1 red (`mainWorldExecution`), 1 gray | **16 green, 0 yellow, 0 red, 4 gray** |
+| `navigator.userAgentData` high-entropy values | `fullVersionList`, `platformVersion` and `architecture` empty | Match an unmodified headless Chrome (`158.0.8127.37`, `26.3.1`, `arm`, 64-bit) |
+| All other release-bar checks | Met | Met |
+
+After the deliberate calls, `dummyFn`, `sourceUrlLeak` and `mainWorldExecution` stay gray: the probes ran in the isolated world, where the page's instrumented functions and its `dummyFn` are not visible. Gray means untriggered, not a pass. The `workerConsistency` and `platformMismatch` checks stayed green.
+
+Other observations:
+
+- **ScrapingCourse Cloudflare demo.** One full-matrix run stayed on Cloudflare's verification page. Three alternating runs each of the released and improved builds then all passed, and the final full matrix passed. The one miss in five runs of the improved build is recorded rather than discarded.
+- **Fingerprint.** Every run returned `bot: not_detected`, `tampering: false` (high confidence), `anomaly_score: 0` and `suspect_score: 0`. The tampering ML score was 0.5139 in the final full matrix. In three alternating runs per build, both builds scored only 0.134 or 0.1853, so the 0.5139 was a single high observation, not a consistent shift.
+- **Unchanged limitations.** The incolumitas legacy `WEBDRIVER` row still fails; it checks `'webdriver' in navigator`, which is true in every modern Chrome. Linux was not re-measured; the hosted Linux smoke test checks the client hints and the brand list.
+
+Verification of the improved build: all 23 Python regressions; the loopback smoke test, which now also checks isolated versus `--main-world` eval, the restored client hints, and that the generated brand list matches Chrome's own; and all 18 upstream Rust test binaries (2,874 passed, 0 failed, 384 ignored). The final detector matrix exited 0 and met the raised [release bar](detector-release-bar.md) on every check. Native SHA-256 `c1b0a41ce9c04186214df71b8bf71b8e0ace412fd1c4e0b9b987fa8e8da7cd5c`; patch script SHA-256 `5f0df9ae401942dd62fe67617e6c2e00e35c6a3f1f8605c5aa0edaf5d3c0d5a5`. Raw evidence is under the ignored `dist/evidence/final-improved-v045-20261127T142542Z-130bd9/`, `improved-v045-chrome158-*`, `cfab-*` and `fpab-*`.

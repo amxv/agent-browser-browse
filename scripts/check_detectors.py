@@ -229,7 +229,7 @@ REBROWSER_EXERCISE = r"""(() => {
   const afterDetections = JSON.parse(document.querySelector('#detections-json').value);
   return {
     beforeDetections, calls, afterDetections, detections: afterDetections,
-    interpretation: 'mainWorldExecution deliberately tests this CLI eval path as actually used. No isolated-context substitute or exposedFn is injected. Gray is not a blanket pass.'
+    interpretation: 'mainWorldExecution deliberately tests the CLI default eval path as actually used (an isolated world in the browse build; eval --main-world is not used). No exposedFn is injected. Gray is not a blanket pass.'
   };
 })()"""
 

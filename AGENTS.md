@@ -30,8 +30,10 @@ This repo holds no upstream source. It patches an exact upstream [agent-browser]
   - Headless `--screen-info={1920x1080 devicePixelRatio=1}`, unless the caller passes one.
   - `AutomationControlled` merged into any `--disable-blink-features` argument.
   - Version-aware headless `--user-agent`. Linux accepts only a real `Google Chrome X.Y.Z.W` version string.
+  - Client hints restored for that user agent. Chrome blanks the high-entropy hints whenever `--user-agent` is set, so `prepare_domains` and `enable_domains_direct` send `Emulation.setUserAgentOverride` with full metadata. The full version comes from `Browser.getVersion` (the running browser, not the installed bundle), and the brand list from a port of Chromium's GREASE algorithm. Cross-origin iframes get it through `prepare_domains`, and dedicated workers inherit it. Explicit user agents skip it.
+  - `eval` runs in a fresh isolated world (`Page.createIsolatedWorld`) on the main frame or the selected frame; `eval --main-world` (first argument) keeps upstream's page-world evaluation. Other engines keep upstream behavior.
   - 15-minute `DEFAULT_IDLE_TIMEOUT_MS`.
-- v0.45.0 note: `frame_execution_context` (used for eval inside a same-process iframe) cycles `Runtime.disable` then `Runtime.enable` and leaves Runtime on. It is intentionally left as upstream wrote it.
+- v0.45.0 note: upstream's `frame_execution_context` cycles `Runtime.disable` then `Runtime.enable` and leaves Runtime on. Default isolated eval no longer uses it; only `eval --main-world` inside a selected same-process iframe still does.
 - The wrapper sets `AGENT_BROWSER_NAMESPACE=abb` (short because of macOS socket-path limits) and an empty config.
 
 ## Build and test locally
@@ -76,7 +78,7 @@ Follow [docs/detector-release-bar.md](docs/detector-release-bar.md): run `check_
 Harness rules (the scripts enforce them; keep it that way):
 
 - Each target gets one fresh session in a private namespace, one navigation and no retries. The harness never clicks a CAPTCHA, injects spoofed properties, selects a saved profile or attaches to a shared browser.
-- `--exercise-rebrowser` calls the detector's documented probes through the real CLI `eval`. `--verify-turnstile` clicks only the demo's own Verify button, and only after a token appears naturally.
+- `--exercise-rebrowser` calls the detector's documented probes through the real default CLI `eval` (isolated world), so `dummyFn` and `mainWorldExecution` stay gray. `--verify-turnstile` clicks only the demo's own Verify button, and only after a token appears naturally.
 - Exit 0 means collection completed, not that the detectors passed. Exit 1 ("partial") can be benign. incolumitas regularly hits the 25-second `open` load timeout while still being captured.
 - Raw evidence under `dist/evidence/` can contain IPs and fingerprint IDs. Never commit it. Public reports must not include IPs, visitor IDs, tokens or personal paths.
 - Don't run two detector matrices at the same time; Fingerprint velocity signals and similar checks can be affected.

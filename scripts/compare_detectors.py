@@ -134,7 +134,8 @@ def extract(directory):
 def checks(r):
     """Yield (name, observed, met) against the documented release bar."""
     linux = r.get("os") == "Linux"
-    allowed_yellow = {"useragent", "headless"} if linux else {"useragent"}
+    # Linux useragent is tolerated until the client-hint fix is measured there.
+    allowed_yellow = {"useragent", "headless"} if linux else set()
     yield "SannySoft failed cells", r.get("sannysoft_failed"), \
         r.get("sannysoft_failed") is not None and r["sannysoft_failed"] <= (1 if linux else 0)
     before = r.get("rebrowser_before")
@@ -142,7 +143,7 @@ def checks(r):
         before is not None and before[0] == [] and set(before[1]) <= allowed_yellow
     after = r.get("rebrowser_after")
     yield "Rebrowser after calls (red, yellow)", after, \
-        after is not None and after[0] == ["mainWorldExecution"] and set(after[1]) <= allowed_yellow
+        after is not None and after[0] == [] and set(after[1]) <= allowed_yellow
     yield "DeviceAndBrowserInfo isBot / true signals", (r.get("dabi_is_bot"), r.get("dabi_true_signals")), \
         r.get("dabi_is_bot") == "false" and r.get("dabi_true_signals") == 0
     yield "ScrapingCourse Cloudflare demo passed", r.get("cloudflare_passed"), r.get("cloudflare_passed") is True

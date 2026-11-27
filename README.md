@@ -14,11 +14,12 @@ All normal CLI commands (`open`, `snapshot`, `click`, `eval`, tabs, state) work 
 - Uses **installed stable Google Chrome** instead of cached Chrome for Testing.
 - Runs **headless**, with a **1920×1080 virtual screen** (Chrome 142+) and Chrome's normal **popup blocking**.
 - Disables the **`AutomationControlled`** Blink feature.
-- Sets a **user agent that matches the installed Chrome version** in headless mode.
+- Sets a **user agent that matches the installed Chrome version** in headless mode, with Chrome's full client hints (`navigator.userAgentData`).
+- Runs **`eval` in an isolated world**: it sees and changes the page's DOM, but not variables defined by page scripts, and the page can't observe it. Use `eval --main-world <js>` when you need page variables.
 - Disables CDP **`Runtime`** right after initialization.
 - Uses a **15-minute idle timeout**.
 
-Explicit CLI options, environment variables and config still take precedence. The wrapper uses the `abb` namespace and an empty config, so no cookies, profiles or account state are selected. These defaults make the browser look more like normal Chrome; they are not a guarantee against detection.
+Explicit CLI options, environment variables and config still take precedence. The wrapper uses the `abb` namespace and an empty config, so no cookies, profiles or account state are selected. These defaults make the browser look more like normal Chrome; they are not a guarantee against detection. Isolated `eval` and full client hints ship in the first release after v0.45.0.
 
 ## Install or update
 
@@ -49,7 +50,7 @@ Always close the sessions you open, and don't run `close --all` on a shared mach
 
 Each release is checked against a fixed set of public bot-detection pages, covering SannySoft, Rebrowser, Fingerprint, BrowserScan, Cloudflare, Turnstile, reCAPTCHA, TLS and more. The [detector release bar](docs/detector-release-bar.md) lists every test, the result a release must reach, and the failures already accepted as limitations.
 
-- [v0.45.0 parity check](docs/verification-0.45.0.md) (macOS): matched v0.43.0 on every test.
+- [v0.45.0 parity check](docs/verification-0.45.0.md) (macOS): matched v0.43.0 on every test. The [improvements after v0.45.0](docs/verification-0.45.0.md#improvements-after-the-v0450-release) clear every remaining Rebrowser warning.
 - [v0.43.0 verification report](docs/verification-0.43.0.md) (macOS and Linux): the full baseline, including limitations and experiments.
 
 Results can change with Chrome version, network reputation and detector updates.

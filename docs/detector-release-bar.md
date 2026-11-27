@@ -1,6 +1,6 @@
 # Detector release bar
 
-Every new browse release should match this bar before it is treated as equivalent to the last verified release. The bar was set by v0.43.0 ([report](verification-0.43.0.md)) and was matched by v0.45.0 ([parity check](verification-0.45.0.md)).
+Every new browse release should match this bar before it is treated as equivalent to the last verified release. The bar was set by v0.43.0 ([report](verification-0.43.0.md)), matched by v0.45.0 ([parity check](verification-0.45.0.md)), and raised after the isolated-eval and client-hint improvements ([results](verification-0.45.0.md#improvements-after-the-v0450-release)).
 
 These are public third-party detectors, so they can change, and results depend on Chrome version, network and session history. Treat a miss as a reason to investigate, not automatic proof that the build regressed. The bar is a parity check against known results. It is not a claim that the browser is undetectable.
 
@@ -36,8 +36,8 @@ Results are for the default headless configuration, with no extra browser argume
 | # | Target | Required result (macOS) | Linux difference |
 | --- | --- | --- | --- |
 | 1 | [SannySoft](https://bot.sannysoft.com/) | 0 failed result cells | At most 1, the SwiftShader WebGL renderer cell |
-| 2 | [Rebrowser](https://bot-detector.rebrowser.net/), before deliberate calls | 0 red; the only yellow allowed is `useragent` | `headless` yellow also allowed |
-| 3 | Rebrowser, after `--exercise-rebrowser` calls | Red is exactly `mainWorldExecution`; the only yellow allowed is `useragent`. `runtimeEnableLeak`, `navigatorWebdriver` and `popupBlocking` stay green. | Same as row 2 |
+| 2 | [Rebrowser](https://bot-detector.rebrowser.net/), before deliberate calls | 0 red, 0 yellow | `headless` yellow allowed; `useragent` yellow tolerated until Linux is re-measured |
+| 3 | Rebrowser, after `--exercise-rebrowser` calls | 0 red, 0 yellow. `mainWorldExecution` stays gray because default `eval` runs in an isolated world; `dummyFn` stays gray for the same reason. `runtimeEnableLeak`, `navigatorWebdriver`, `useragent` and `popupBlocking` stay green. | Same as row 2 |
 | 4 | [DeviceAndBrowserInfo](https://deviceandbrowserinfo.com/are_you_a_bot) | `isBot: false`, 0 true signals (both CDP fields false) | Same |
 | 5 | [ScrapingCourse Cloudflare demo](https://www.scrapingcourse.com/cloudflare-challenge) | Challenge-success content reached | Same |
 | 6 | [Fingerprint playground](https://demo.fingerprint.com/playground) | `bot: not_detected`, `tampering: false`, `anti_detect_browser: false`, `suspect_score: 0` | Same |
@@ -55,8 +55,7 @@ Observed only, with no pass criterion: NowSecure (it embeds a known Turnstile te
 
 These failures are part of the bar. A release does not need to fix them, but it must not add new ones:
 
-- Rebrowser `mainWorldExecution` is red after deliberate eval, because CLI `eval` runs in the page's main world.
-- Rebrowser `useragent` is yellow, because the high-entropy client hints have no full version.
+- `eval --main-world` deliberately runs in the page's world, so Rebrowser's `mainWorldExecution` turns red when it is used. The bar measures the default `eval`.
 - The incolumitas legacy `WEBDRIVER` row fails, and its behavioral score is unavailable without interaction.
 - On ordinary Linux headless Chrome, the SwiftShader renderer trips one SannySoft cell and the Rebrowser `headless` warning.
 
@@ -67,5 +66,7 @@ Most upstream changes that would break the bar affect the patched behaviors in `
 - **New `Runtime.enable` calls** that are not followed by `Runtime.disable`. These turn Rebrowser's `runtimeEnableLeak` red. Run `grep -rn '"Runtime.enable"' cli/src` and review every non-test hit.
 - **Launch argument changes** in `cli/src/native/cdp/chrome.rs` `build_chrome_args`: new flags, `--disable-popup-blocking`, screen and window size, `--enable-features` merging.
 - **Browser discovery or headless changes** that bypass the stable-Chrome preference or the startup user-agent injection.
+- **Client-hint drift.** The patch rebuilds Chrome's GREASE brand list from Chromium's algorithm. If Chrome changes it, `smoke.py` fails its brand comparison; port the new algorithm from `components/embedder_support/user_agent_utils.cc`.
+- **Eval path changes** in `handle_evaluate` (`actions.rs`) or the `eval` parser (`commands.rs`) that bypass the isolated world.
 
 Record each release's parity result in `docs/verification-<version>.md`, using the v0.45.0 note as the template.
