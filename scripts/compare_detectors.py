@@ -63,6 +63,8 @@ def extract(directory):
         out["user_agent"] = fp.get("userAgent")
         screen = fp.get("screen") or {}
         out["screen"] = (screen.get("width"), screen.get("height"))
+        hints = fp.get("highEntropyUA") or {}
+        out["full_versions"] = {item.get("brand"): item.get("version") for item in hints.get("fullVersionList") or []}
         match = re.search(r'"Browser": "([^"]+)"', (item.get("browser_version") or {}).get("stdout", ""))
         out["chrome"] = match.group(1) if match else None
 
@@ -162,6 +164,9 @@ def checks(r):
     ua = r.get("user_agent") or ""
     yield "User agent has no HeadlessChrome", ua[-45:], bool(ua) and "HeadlessChrome" not in ua
     yield "Screen", r.get("screen"), r.get("screen") == (1920, 1080)
+    chrome = (r.get("chrome") or "").partition("/")[2]
+    reported = (r.get("full_versions") or {}).get("Google Chrome")
+    yield "Client hints full version matches running Chrome", (reported, chrome), bool(chrome) and reported == chrome
     tls = r.get("tls") or (None, None, None)
     yield "TLS (HTTP, JA4, HTTP/2 hash) recorded", tls, tls[0] == "h2" and all(tls)
 
