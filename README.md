@@ -30,10 +30,10 @@ git clone https://github.com/amxv/agent-browser-browse.git
 cd agent-browser-browse
 
 # Apple Silicon macOS
-bash scripts/install-macos.sh 0.43.0
+bash scripts/install-macos.sh 0.45.0
 
 # Linux x86_64 (release built on Ubuntu 24.04)
-bash scripts/install-linux.sh 0.43.0
+bash scripts/install-linux.sh 0.45.0
 ```
 
 Use the command for your OS, then ensure `~/.local/bin` is on `PATH`. Linux also supports `XDG_DATA_HOME` and `XDG_BIN_HOME`. Windows and Linux ARM64 are not published or validated by this release. Earlier Windows work remains on the original cross-platform branch.
@@ -55,6 +55,8 @@ Always close sessions you open. Do not point this variant at a shared upstream d
 ## Measured detector results
 
 The [v0.43.0 verification report](docs/verification-0.43.0.md) records the November 13, 2026 results on **both macOS and Linux**, exact browser/OS versions, the configuration experiments, and remaining limits. It separates successful CLI tests from third-party detector verdicts, incomplete demos, and blocked or unavailable targets.
+
+The [v0.45.0 parity check](docs/verification-0.45.0.md) ran the same matrix on November 27, 2026 on macOS against the published v0.43.0 build, on the same Chrome 158 build. Every recorded detector result matched, including the known limitations. Linux was not re-measured for v0.45.0.
 
 The previous [v0.41.1 Mac-only measurements](https://github.com/amxv/agent-browser-browse/blob/4506dfe/README.md#detection-test-results) are historical. They do not establish Linux behavior or a guarantee for later releases. Network reputation, browser version, session history, behavior, and detector changes can affect the result.
 
@@ -81,7 +83,7 @@ The same [build workflow](.github/workflows/build.yml) serves PR/manual CI and r
 ### Reproduce a source build
 
 ```bash
-git clone --depth 1 --branch v0.43.0 https://github.com/vercel-labs/agent-browser.git upstream
+git clone --depth 1 --branch v0.45.0 https://github.com/vercel-labs/agent-browser.git upstream
 python3 scripts/patch_upstream.py upstream
 PATCHED_UPSTREAM_ROOT="$PWD/upstream" python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
@@ -90,11 +92,11 @@ pnpm --dir upstream --filter dashboard build
 cargo fmt --manifest-path upstream/cli/Cargo.toml --all
 cargo build --manifest-path upstream/cli/Cargo.toml --locked --profile ci --jobs 2
 python3 scripts/run_upstream_tests.py upstream
-python3 scripts/smoke.py upstream/cli/target/ci/agent-browser --version 0.43.0
+python3 scripts/smoke.py upstream/cli/target/ci/agent-browser --version 0.45.0
 
 # Select the target matching the build machine:
-python3 scripts/package.py darwin-arm64 v0.43.0
-# python3 scripts/package.py linux-x86_64 v0.43.0
+python3 scripts/package.py darwin-arm64 v0.45.0
+# python3 scripts/package.py linux-x86_64 v0.45.0
 ```
 
 Build the dashboard before compiling Rust so its actual UI is embedded. The unit runner uses a temporary empty config, clears inherited browser environment overrides, and runs tests serially using upstream's optimized CI profile. It does not change the user's home directory or saved config. The smoke test exercises default navigation/input/snapshot/tab/state behavior, an explicit empty profile, custom Blink arguments, and both user-agent override paths. It uses only an owned loopback fixture and closes its own sessions.
