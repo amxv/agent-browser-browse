@@ -296,7 +296,7 @@ The ignored counts are upstream's explicitly ignored browser/integration tests. 
 
 An initial macOS full run had two failed assertions because it inherited the user's saved executable path and idle timeout. No saved config was edited. The final isolated serial runner used a temporary empty config and removed inherited browser overrides; every applicable test then passed. Linux's completed run used the same low-memory compiler settings with two test threads and passed without a config-related failure. The committed runner and hosted workflow use one test thread to avoid process-environment races. Earlier optimized test compilations were stopped after memory pressure; no canceled run is counted as a pass.
 
-Reproduce with the [README source-build steps](../README.md#reproduce-a-source-build), then:
+Reproduce with the [source-build steps](../AGENTS.md#build-and-test-locally), then:
 
 ```bash
 PATCHED_UPSTREAM_ROOT="$PWD/upstream" python3 -m unittest discover -s scripts -p 'test_*.py' -v

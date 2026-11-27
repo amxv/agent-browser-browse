@@ -9,7 +9,7 @@ These are public third-party detectors, so they can change, and results depend o
 Run the previous release and the candidate **back to back on the same machine, network and Chrome build**. Without a same-day baseline, a detector or Chrome change cannot be told apart from a build regression.
 
 ```bash
-# 1. Build the candidate (README "Reproduce a source build"), then run the smoke suite.
+# 1. Build the candidate (see AGENTS.md "Build and test locally"), then run the smoke suite.
 python3 scripts/smoke.py upstream/cli/target/ci/agent-browser --version <X.Y.Z>
 
 # 2. Baseline: the previous release's installed native binary.
